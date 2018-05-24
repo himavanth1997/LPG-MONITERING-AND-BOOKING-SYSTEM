@@ -1,0 +1,306 @@
+
+/*
+  
+  The circuit:
+ * LCD RS pin to digital pin 13
+ * LCD Enable pin to digital pin 12
+ * LCD D4 pin to digital pin 5
+ * LCD D5 pin to digital pin 4
+ * LCD D6 pin to digital pin 3
+ * LCD D7 pin to digital pin 2
+ * LCD R/W pin to ground
+ * LCD VSS pin to ground
+ * LCD VCC pin to 5V
+ * 10K resistor:
+ * ends to +5V and ground
+ * wiper to LCD VO pin (pin 3)
+ */
+ // include the library code:
+#include <LiquidCrystal.h>
+
+// initialize the library with the numbers of the interface pins
+LiquidCrystal lcd(13, 12, 5, 4, 3, 2);
+#include <SoftwareSerial.h>
+SoftwareSerial espSerial =  SoftwareSerial(10,11);      //   connect the arduino RX pin to esp8266 module TX pin   -  connect the arduino TX pin to esp8266 module RX pin
+
+
+#define buzzer 7
+#define fan 9
+
+
+
+float gas_pin=A2;
+float gas_value;
+
+float temp_pin = A3;
+float temp;
+
+float tempwt = 27;
+float wt ;
+float temp_calibration = 25.00;
+float gas_normal = 500.00;
+float roomtemp = 55.00;
+float extreemtemp = 60.00;
+
+
+String apiKey = "ETEHJRQC7ANXU3TE";     // replace with your channel's thingspeak WRITE API key
+
+String ssid="Himavanth";    // Wifi network SSID
+String password ="Hima@1990";  // Wifi network password
+
+boolean DEBUG=true;
+
+//======================================================================== showResponce
+void showResponse(int waitTime){
+    long t=millis();
+    char c;
+    while (t+waitTime>millis()){
+      if (espSerial.available()){
+        c=espSerial.read();
+        if (DEBUG) Serial.print(c);
+      }
+    }
+}
+
+//================================================================================ setup
+
+
+void setup() {
+
+  DEBUG=true;           // enable debug serial
+  Serial.begin(9600);
+    
+  Serial.println("LCD is intializing:");
+  // set up the LCD's number of columns and rows:
+  lcd.begin(16, 2);
+  // Print a message to the LCD.
+  lcd.print("HELLO KSRMCE ECE");
+  delay(2000);
+  lcd.clear();
+  lcd.print("LPG MONITERING &");
+  delay(1000);
+  lcd.setCursor(2,1);
+  lcd.print("BOOKING SYSTEM");
+  delay(3000);
+  Serial.println("LCD intialisation sucessfull.");
+
+
+pinMode(gas_pin,INPUT);    //MQ_6 GAS SENSOR ON ANALOG PIN A2
+pinMode(temp_pin,INPUT);   //TEMP pin on analog pin A3
+pinMode(buzzer, OUTPUT);   //BUZZER on the digital pin 7
+pinMode(fan, OUTPUT);      //FAN on the digital pin 9
+
+espSerial.begin(115200);  // enable software serial
+                          // Your esp8266 module's speed is probably at 115200. 
+                          // For this reason the first time set the speed to 115200 or to your esp8266 configured speed 
+                          // and upload. Then change to 9600 and upload again
+  
+  espSerial.println("AT+RST");         // Enable this line to reset the module;
+  showResponse(1000);
+
+  espSerial.println("AT+UART_CUR=9600,8,1,0,0");    // Enable this line to set esp8266 serial speed to 9600 bps
+  showResponse(1000);
+  
+  
+
+  espSerial.println("AT+CWMODE=1");   // set esp8266 as client
+  showResponse(1000);
+
+  espSerial.println("AT+CWJAP=\""+ssid+"\",\""+password+"\"");  // set your home router SSID and password
+  showResponse(5000);
+
+   if (DEBUG)  Serial.println("Setup completed");
+}
+
+
+// =================================================================================== loop=========================================================================================
+  
+
+
+void loop() {
+
+
+
+if(Serial.available()>0){
+  float wt = getFloatFromSerialMonitor();
+   tempwt = wt;
+
+  Serial.print("weight is:");
+  Serial.println(tempwt);
+  
+  } 
+  else{
+  
+   Serial.print("weight is :"); 
+   Serial.println(tempwt);
+   }
+
+  temp = analogRead(temp_pin);
+  temp = temp * 0.48828125;
+  temp = temp - temp_calibration;
+  
+
+  gas_value = analogRead(gas_pin);
+
+
+  float  w = tempwt;
+  float  t = temp;
+    
+  lcd.clear();
+     lcd.print("WEIGHT IS ...");
+     delay(1000);
+     lcd.setCursor(5,1);
+     lcd.print(tempwt);
+     delay(1000);
+
+  
+  thingSpeakWrite(t,w);                                      // Write values to thingspeak
+  delay(16000); 
+    
+  if(gas_value > gas_normal){
+     Serial.println("GAS IS DETECTED....ALERT!");
+     
+     
+     Serial.print("GAS value is:");
+     Serial.print(gas_value);
+
+
+      digitalWrite(fan,HIGH);
+      digitalWrite(buzzer,HIGH);///
+      
+     lcd.clear();
+     lcd.print("GAS DETECTED..");
+     delay(1000);
+     lcd.setCursor(5,1);
+     lcd.print("ALERT..!");
+     delay(1000);
+     
+     lcd.clear();
+     lcd.print("GAS VALUE IS:");
+     delay(1000);
+     lcd.setCursor(5,1);
+     lcd.print(gas_value);
+     delay(1000);
+       }
+      else{
+     digitalWrite(buzzer,LOW);
+     digitalWrite(fan,LOW);
+    
+     Serial.println("NO GAS IS DETECTED");
+     Serial.print("GAS value is:");
+     Serial.println(gas_value);
+     
+     lcd.clear();
+     lcd.print("GAS is NORMAL.");
+     delay(1000);
+     lcd.setCursor(5,1);
+     lcd.print(gas_value);
+     delay(1000);
+       }
+        
+     
+ if(temp > roomtemp){
+       digitalWrite(fan,HIGH);
+     Serial.print("TEMPARATURE VA1LUE IS :");
+     Serial.print(temp);
+     Serial.println("*c");
+
+     lcd.clear();
+     lcd.print("TEMP VALUE IS:");
+     lcd.setCursor(5,1);
+     lcd.print(temp);
+     delay(1000);
+
+ if(temp > extreemtemp){
+
+     digitalWrite(fan,HIGH);   // FAN ON
+     digitalWrite(buzzer,HIGH); 
+     
+ }
+     
+  }
+  else{
+    
+    digitalWrite(fan,LOW);  //  FAN OFF
+     
+     Serial.println("TEMPARATURE is normal");
+     Serial.println("TEMPARATURE value is:");
+     Serial.println(temp);
+
+   
+     lcd.clear();
+     lcd.print("TEMP IS NORMAL.");
+     lcd.setCursor(5,1);
+     lcd.print(temp);
+     delay(1000);
+     
+  }
+     }
+//// ======================================================================================loop=================================================================================================
+float getFloatFromSerialMonitor(){
+  char inData[20];  
+  
+  float f=0;    
+  int x=0;  
+  while (x<1){  
+  String str;   
+  if (Serial.available()) {
+    delay(100);
+    int i=0;
+    while (Serial.available() > 0) {
+     char  inByte = Serial.read();
+      str=str+inByte;
+      inData[i]=inByte;
+      i+=1;
+      x=2;
+    }
+    f = atof(inData);
+    memset(inData, 0, sizeof(inData));  
+  }
+  }//END WHILE X<1  
+   return f; 
+  }     
+
+  //============================================================================thingspeak writecode===========================================================================================
+ 
+  boolean thingSpeakWrite(float value1, float value2){
+  String cmd = "AT+CIPSTART=\"TCP\",\"";                  // TCP connection
+  cmd += "184.106.153.149";                               // api.thingspeak.com
+  cmd += "\",80";
+  espSerial.println(cmd);
+  if (DEBUG) Serial.println(cmd);
+  if(espSerial.find("Error")){
+    if (DEBUG) Serial.println("AT+CIPSTART error");
+    return false;
+  }
+  
+  
+  String getStr = "GET /update?api_key=";   // prepare GET string
+  getStr += apiKey;
+  
+  getStr +="&field1=";
+  getStr += String(value1);
+  getStr +="&field2=";
+  getStr += String(value2);
+   
+  getStr += "\r\n\r\n";
+ 
+  // send data length
+  cmd = "AT+CIPSEND=";
+  cmd += String(getStr.length());
+  espSerial.println(cmd);
+  if (DEBUG)  Serial.println(cmd);
+  
+  delay(100);
+  if(espSerial.find(">")){
+    espSerial.print(getStr);
+    if (DEBUG)  Serial.print(getStr);
+  }
+  else{
+    espSerial.println("AT+CIPCLOSE");
+    // alert user
+    if (DEBUG)   Serial.println("AT+CIPCLOSE");
+    return false;
+  }
+  return true;
+}
